@@ -1,0 +1,300 @@
+//@version=5 
+strategy("High, Low, 50% Range[[Jitu]]", overlay=true) 
+candle_size = input(300)
+
+
+ 
+// Calculate the high and low of the current 1-minute candle 
+var float highOfMinute = na 
+var float lowOfMinute = na 
+ 
+if (dayofweek != dayofweek[1]) 
+    highOfMinute := high 
+    lowOfMinute := low 
+ 
+// Calculate 50% of the difference between high and low 
+range50Percent = (highOfMinute - lowOfMinute) * 0.5 
+midpoint = lowOfMinute + range50Percent 
+ 
+// Define trading time range (9:15 AM IST to 9:30 AM IST) 
+tradingStartHour = input(9) 
+tradingStartMinute = input(15)
+tradingEndHour = input(9) 
+tradingEndMinute = input(30)
+ 
+// Calculate trading time in minutes 
+tradingStartMinutes = tradingStartHour * 60 + tradingStartMinute 
+tradingEndMinutes = tradingEndHour * 60 + tradingEndMinute 
+ 
+// Check if the current bar is within the trading time range 
+isTradingTime = hour * 60 + minute >= tradingStartMinutes and hour * 60 + minute <= tradingEndMinutes 
+
+
+// Trade
+quant_lot = input(defval=1, title='Lots to Trade', group="Trade Details")
+lot_size = input(defval=25, title='Lot Size', group="Trade Details")
+qty = quant_lot * lot_size
+
+algojiStrategyTag = input.string("Algoji_15775_1_Fib_Bollinger_Supertrend", "Strategy Tag", group = "Trade Details")
+
+// Symbol
+symbol = input(defval="BANKNIFTY", title='Enter Trade Symbol in Capital Letters', group="Trade Details")
+
+intstrumentTypeInput = input.string("Index Options", "Intrument Type", options=["Index Options", "Stock Options"], group="Trade Details")
+
+// Expiry
+expiryDate = input.string(defval='01', title='Select Expiry Date', options=['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31'], group="Trade Details")
+expirtyMonth = input.string(defval='Aug', title='Select Expiry Month', options=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], group="Trade Details")
+expiryYear = input.int(defval=2022, title='Enter Expiry Year', minval=2022, step=1, group="Trade Details")
+expiry = expiryDate + expirtyMonth + str.tostring(expiryYear)
+
+// Trade Session
+// s = input.session(title='Intra Day Trade Session', defval='0915-1510', group="Trade Details")
+// st = time(timeframe.period, s)
+carryOver = input.bool(title = "Carry Over Trades after 3 PM", defval = true, group="Trade Details")
+e = input.session(title='End Session', defval='1515-1520', group="Trade Details")
+et = time(timeframe.period, e)
+
+// Options
+strikeType = input.string(defval='ATM', title='Choose Option Moneyness', options=['ATM', 'ITM', 'OTM'], group="Options Details")
+strikeDistance = input.int(defval=0, title='In case of ITM / OTM, choose distance from ATM, in terms of level of depth', minval=0, step=1, group="Options Details")
+strikeSpread = input.float(defval=100, title='Enter Difference between two strikes as per Option Chain', minval=1, group="Options Details")
+
+var callStrike = close
+var putStrike = close
+
+callOtm = math.round((close + strikeDistance)/strikeSpread)*strikeSpread
+putOtm = math.round((close - strikeDistance)/strikeSpread)*strikeSpread
+
+callItm =  math.round((close - strikeDistance)/strikeSpread)*strikeSpread
+putItm = math.round((close + strikeDistance)/strikeSpread)*strikeSpread
+
+call = math.round((close)/strikeSpread)*strikeSpread
+put = math.round((close)/strikeSpread)*strikeSpread
+
+callStrike := strikeType == "ATM" ? call : strikeType == "ITM" ? callItm : strikeType == "OTM" ? callOtm : na
+putStrike := strikeType == "ATM" ? put : strikeType == "ITM" ? putItm : strikeType == "OTM" ? putOtm : na
+
+symbolExpiry = symbol + '|' + expiry + "|"
+
+intstrumentType = intstrumentTypeInput == "Index Options" ? "OPTIDX" : "OPTSTK"
+
+// Calculations of Indicators
+
+
+// Alogji
+callEntryStrike = strikeType == "ATM" ? math.round((strategy.position_avg_price)/strikeSpread)*strikeSpread : strikeType == "ITM" ? math.round((strategy.position_avg_price - strikeDistance)/strikeSpread)*strikeSpread : strikeType == "OTM" ? math.round((strategy.position_avg_price + strikeDistance)/strikeSpread)*strikeSpread : na
+
+putEntryStrike = strikeType == "ATM" ? math.round((strategy.position_avg_price)/strikeSpread)*strikeSpread : strikeType == "ITM" ? math.round((strategy.position_avg_price + strikeDistance)/strikeSpread)*strikeSpread : strikeType == "OTM" ? math.round((strategy.position_avg_price - strikeDistance)/strikeSpread)*strikeSpread : na
+
+lxse="TYPE:LX" + ":SYMBOL:" + symbolExpiry + str.tostring(callEntryStrike) + '|' + 'CE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + ":TYPE:LE" + ":SYMBOL:"+ symbolExpiry + str.tostring(putStrike) + '|' + 'PE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + (algojiStrategyTag == "" ? "" : ":STAG:" + algojiStrategyTag)
+
+sxle="TYPE:LX" + ":SYMBOL:" + symbolExpiry + str.tostring(putEntryStrike) + '|' + 'PE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + ":TYPE:LE" + ":SYMBOL:" + symbolExpiry + str.tostring(callStrike) + '|' + 'CE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + (algojiStrategyTag == "" ? "" : ":STAG:" + algojiStrategyTag)
+
+le="TYPE:LE" + ":SYMBOL:" + symbolExpiry + str.tostring(callStrike) + '|' + 'CE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + (algojiStrategyTag == "" ? "" : ":STAG:" + algojiStrategyTag)
+
+lx="TYPE:LX" + ":SYMBOL:" + symbolExpiry + str.tostring(callEntryStrike) + '|' + 'CE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + (algojiStrategyTag == "" ? "" : ":STAG:" + algojiStrategyTag)
+
+se="TYPE:LE" + ":SYMBOL:" + symbolExpiry + str.tostring(putStrike) + '|' + 'PE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + (algojiStrategyTag == "" ? "" : ":STAG:" + algojiStrategyTag)
+
+sx="TYPE:LX" + ":SYMBOL:" + symbolExpiry + str.tostring(putEntryStrike) + '|' + 'PE' + ":QTY:" + str.tostring(qty) + ":INS:" + intstrumentType + (algojiStrategyTag == "" ? "" : ":STAG:" + algojiStrategyTag)
+
+// First Candle
+t = time("1440", session.regular)
+is_first = na(t[1]) and not na(t) or t[1] < t
+
+var candle_index = 1
+
+if is_first
+    candle_index := 1
+else
+    candle_index := candle_index + 1
+
+// Bank Nifty and Nifty
+bnC = request.security("NSE:BANKNIFTY","5",close, lookahead = barmerge.lookahead_on)
+nC = request.security("NSE:NIFTY","5",close, lookahead = barmerge.lookahead_on)
+
+bn = bnC-bnC[candle_index]
+n = nC-nC[candle_index]
+ 
+ 
+// Plotting the high, low, and 50% range 
+plot(highOfMinute, color=color.green, style=plot.style_linebr, linewidth=2, title="High of Minute") 
+plot(lowOfMinute, color=color.red, style=plot.style_linebr, linewidth=2, title="Low of Minute") 
+plot(midpoint, color=color.blue, style=plot.style_linebr, linewidth=2, title="50% Range") 
+
+no_trade = false
+no_trade := no_trade[1]
+
+if (highOfMinute - lowOfMinute) > candle_size
+    no_trade := true
+
+if not isTradingTime
+    no_trade := false
+
+ 
+// Highlight trading time in green 
+bgcolor(isTradingTime ? color.green : na, transp=90)
+
+vwap = ta.vwap(hl2)
+plot(vwap , color = color.blue, linewidth = 2)
+use_vwap = input(true)
+
+buy = isTradingTime and close > midpoint and close < highOfMinute and not ta.change(time('D')) and (use_vwap ? close > vwap : close > 0) and close > open and not no_trade
+sell = isTradingTime and close < midpoint and close > lowOfMinute and not ta.change(time('D'))  and (use_vwap ? close < vwap : close > 0) and close < open and not no_trade
+
+
+
+//plotshape(true_trade)
+use_sl_tp_in_points = input(false)
+
+Stop = input.float(100.00,title = "StopLoss",step = 0.1)
+ 
+ProfitPerc = input.float(defval =100.00,title = "TARGET",step = 0.1)
+ 
+ 
+
+long_entered = false
+long_entered := long_entered[1]
+ 
+short_entered = false
+short_entered := short_entered[1]
+
+
+nt= input.int(title='Trades per session', defval=1)
+
+
+buy := buy and not (long_entered or short_entered)
+sell := sell and not (short_entered or long_entered)
+
+var count = 0
+count :=  ta.change(time ('D')) ? 0 : buy or sell ? count + 1 : count
+ 
+ltp_hit = (buy or sell) and count <= nt
+ 
+
+ 
+if ta.change(time('D'))
+    count := 0
+
+
+buy := buy and count[1] < nt
+sell := sell and count[1] < nt 
+
+
+long_short = 0
+long_last = (buy) and (nz(long_short[1]) == 0 or nz(long_short[1]) == -1)
+short_last = (sell) and (nz(long_short[1]) == 0 or nz(long_short[1]) == 1)
+long_short := long_last ? 1 : short_last ? -1 : long_short[1]
+ 
+
+// upTrend1 = plot(direction1 < 0 and long_entered? supertrend1 : na, "Up Trend", color = color.red, style=plot.style_linebr,offset = -1)
+// downTrend1 = plot(direction1 > 0 and short_entered? supertrend1 : na, "Down Trend", color = color.red, style=plot.style_linebr,offset = -1)
+
+
+plotshape(buy, color=color.new(color.green, 0), style=shape.labelup, text='Buy', textcolor=color.new(color.white, 0), location=location.belowbar,offset =0,editable = true)
+plotshape(sell, color=color.new(color.red, 0), style=shape.labeldown, text='Sell', textcolor=color.new(color.white, 0), location=location.abovebar,offset = 0,editable = true)
+
+
+
+longPrice = ta.valuewhen(buy and not (long_entered or short_entered), close, 0)
+shortPrice = ta.valuewhen(sell and not (long_entered or short_entered), close, 0)
+
+
+ 
+// if(use_sl)
+//     longPrice := valuewhen(buy1,entry_p , 0)
+//     shortPrice := valuewhen(sell1,entry_p, 0)
+ 
+ 
+// longStop = longPrice  - Stop
+// shortStop = shortPrice + Stop
+ 
+
+// // longStop := ta.valuewhen(buy, low[2] , 0)
+// // shortStop := ta.valuewhen(sell,high[2], 0)
+ 
+// longTake = longPrice +  ProfitPerc
+// shortTake = shortPrice  - ProfitPerc
+
+
+longStop = lowOfMinute// longPrice - Stop
+shortStop = highOfMinute// shortPrice + Stop
+longTake = highOfMinute// longPrice + ProfitPerc
+shortTake = lowOfMinute// shortPrice - ProfitPerc
+
+
+if  use_sl_tp_in_points
+    longStop := longPrice - Stop
+    shortStop := shortPrice + Stop
+    longTake := longPrice + ProfitPerc
+    shortTake := shortPrice - ProfitPerc
+
+ 
+// plot(long_short==1  ? longStop : na, style=plot.style_linebr, color=color.red, linewidth=2, title="Long Fixed SL",offset = -1)
+// plot(long_short==-1 and not true_trade ? shortStop : na, style=plot.style_linebr, color=color.red, linewidth=2, title="Short Fixed SL",offset = -1)
+// plot(long_short==1  and not true_trade ? longTake : na, style=plot.style_linebr, color=color.navy, linewidth=2, title="Long Fixed TP",offset = -1)
+// plot(long_short==-1 and not true_trade ? shortTake : na, style=plot.style_linebr, color=color.navy, linewidth=2, title="Short Fixed TP",offset = -1)
+
+plot(long_short==1  ? longStop : na, style=plot.style_linebr, color=color.red, linewidth=2, title="Long Fixed SL")
+plot(long_short==-1 ? shortStop : na, style=plot.style_linebr, color=color.red, linewidth=2, title="Short Fixed SL")
+plot(long_short==1  ? longTake : na, style=plot.style_linebr, color=color.navy, linewidth=2, title="Long Fixed TP")
+plot(long_short==-1 ? shortTake : na, style=plot.style_linebr, color=color.navy, linewidth=2, title="Short Fixed TP")
+ 
+longBar1 = ta.barssince(long_last)
+longBar2 = longBar1 >= (1) ? true : false
+shortBar1 = ta.barssince(short_last)
+shortBar2 = shortBar1 >= (1) ? true : false
+ 
+longSLhit = long_short==1 and longBar2 and low < longStop
+ 
+// if(long_entered and  direction1 > 0)
+//     longSLhit := true
+ 
+plotshape(longSLhit and not (sell and  not(short_entered)  and (long_entered)), style=shape.labelup, location=location.belowbar, color=color.gray, size=size.tiny, title="Stop Loss", text="SL", textcolor=color.white)
+shortSLhit = long_short==-1 and shortBar2 and high > shortStop
+ 
+ 
+// if(short_entered and direction1 < 0)
+//     shortSLhit := true
+ 
+plotshape(shortSLhit and not (buy and  not(long_entered)  and (short_entered)), style=shape.labeldown, location=location.abovebar, color=color.gray, size=size.tiny, title="Stop Loss", text="SL", textcolor=color.white)
+ 
+ 
+longTPhit = long_short==1 and longBar2 and high > longTake
+plotshape(longTPhit, style=shape.labeldown, location=location.abovebar, color=color.navy, size=size.tiny, title="Target", text="TP", textcolor=color.white)
+shortTPhit = long_short==-1 and shortBar2 and low < shortTake
+plotshape(shortTPhit, style=shape.labelup, location=location.belowbar, color=color.navy, size=size.tiny, title="Target", text="TP", textcolor=color.white)
+ 
+long_short := (long_short==1 or long_short==0) and longBar2 and (longSLhit or longTPhit) ? 0 : (long_short==-1 or long_short==0) and shortBar2 and (shortSLhit or shortTPhit) ? 0 : long_short
+ 
+
+if (buy) 
+    strategy.entry('buy', strategy.long,qty = qty,comment=le)
+    strategy.exit('Stop', 'buy', limit=longTake, stop=longStop, comment=lx)
+ 
+if (sell)
+    strategy.entry('sell', strategy.short,qty = qty,comment=se)
+    strategy.exit('Stop', 'sell', limit=shortTake, stop=shortStop, comment=sx)
+
+exit = longTPhit or longSLhit or shortTPhit or shortSLhit
+
+if(long_last)
+    long_entered := true
+    short_entered := false
+if(short_last)
+    short_entered := true
+    long_entered := false
+ 
+//alertcondition(condition= (longSLhit or shortSLhit) and not (sell and  not(short_entered)  and (long_entered)), title="Long/Short SL")
+//alertcondition(condition= shortSLhit and not (buy and  not(long_entered)  and (short_entered)), title="Short SL")
+ 
+// alertcondition(condition=longTPhit or shortTPhit, title="Long/short TP")
+// //alertcondition(condition=shortTPhit, title="Short TP")
+ 
+if(longSLhit or longTPhit)
+    long_entered := false
+ 
+if(shortSLhit or shortTPhit)
+    short_entered := false
+    
